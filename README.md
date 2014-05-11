@@ -1,4 +1,4 @@
-EmailAndRDF
+Convert Email To RDF
 ===========
 
 Read  email and store as RDF database.
