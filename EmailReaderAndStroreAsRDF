@@ -1,0 +1,277 @@
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.StringTokenizer;
+import java.util.Vector;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+
+
+public class EmailReaderAndStroreAsRDF {
+	public static int i=0;
+	public static boolean header=false;
+	public static String InputFileName="";
+	public static String OutputFileName="";
+	
+	public static String namespace="http://bipinupadhyaya.wordpress.com/ontology/email#";
+	
+	public static String getMessageIDInXML(String s)
+	{
+		if(s.contains("<"))
+		{
+			String messageID="<email:Message rdf:about=\"" + escape(s.substring(s.indexOf("<")+1, s.indexOf(">"))) + "\" >";
+			return messageID;
+		}
+		else if(s.trim().equals("Message-id:"))
+		{
+			i++;
+			s="<email:Message rdf:about=\"" + i + "\" >";
+		}
+		return s;
+	}
+	
+	public static String getSubjectInXML(String s)
+	{
+		
+			String subject="<email:Subject>" + escape(s.substring(s.indexOf(":")+1, s.length())) + "</email:Subject>";
+			return subject;
+	}
+	public static String getFromInXML(String s)
+	{
+		String label="";
+		String address="";
+		s=s.substring(s.indexOf(":"),s.length());
+		if(s.trim().indexOf("<")>2)
+		{
+			label= s.substring(1, s.indexOf("<")-1);
+			address=s.substring(s.indexOf("<")+1,s.indexOf(">"));
+		}
+		else if(s.trim().startsWith("<"))
+		{
+			address=s.substring(s.indexOf("<")+1,s.indexOf(">"));
+		}
+		else if(s.trim().contains("["))
+		{
+			if(s.trim().startsWith("["))
+				address=s.substring(s.indexOf("[")+1,s.indexOf("]"));
+			else 
+			{
+				label= s.substring(1, s.indexOf("[")-1);
+				address=s.substring(s.indexOf("[")+1,s.indexOf("]"));
+			}
+		}
+		else
+			address=s;
+		
+		if(label.equals(""))
+			return "<email:From><email:Address rdfs:resource=\""  + escape(address.trim()) + "\"/></email:From>";
+		else
+			return "<email:From><email:Address rdfs:resource=\"" + escape(address.trim()) + " \"> <rdfs:label>"+ escape(removeQuotes(label.trim()))+ "</rdfs:label></email:Address></email:From>";
+			
+	}
+	
+	public static String getToFeildInXML(String s)
+	{
+		String emailTo="<email:To>";
+		StringTokenizer st=new StringTokenizer(s);
+		if(s.contains(";"))
+			st=new  StringTokenizer(s,";");
+		if(s.contains(","))
+			st=new  StringTokenizer(s,",");
+		while(st.hasMoreTokens())
+		{
+			String ele=st.nextToken();
+			String label="";
+			String address;
+			if(ele.startsWith("<") || ele.startsWith("["))
+			{
+					address=ele.substring(1,ele.length()-1);
+			}		
+			else 
+			{
+				if(ele.contains("<"))
+					{
+						label=ele.substring(1, ele.indexOf("<")-1);
+						address=ele.substring(ele.indexOf("<")+1,ele.indexOf(">"));
+					}
+				else if(ele.contains("["))
+				{
+					label=ele.substring(1, ele.indexOf("[")-1);
+					address=ele.substring(ele.indexOf("[")+1,ele.indexOf("]"));
+				}
+				else
+				{
+					address=ele;
+				}
+			}
+			emailTo=emailTo+"<email:Address rdfs:resource=\"" + escape(address.trim()) + "\">";
+			if(!label.equals(""))
+				emailTo=emailTo+"<rdfs:label>"+escape(removeQuotes(label.trim()))+"</rdfs:label>";
+			emailTo=emailTo+"</email:Address>";
+		}
+		emailTo=emailTo+"</email:To>";
+		return emailTo;
+	}
+	
+	public static String removeQuotes(String str)
+	{
+		if(str.trim().startsWith("'"))
+			return str.substring(1, str.length()-1);
+		if(str.trim().startsWith("\""))
+			return str.substring(1, str.length()-1);
+		if(str.trim().startsWith("<"))
+			return str.substring(1, str.length()-1);
+		if(str.trim().startsWith("["))    
+			return str.substring(1, str.length()-1);
+
+		return str;
+	}
+	public static String getDateInXML(String s)
+	{
+		String emaildate="<dc:date>" + escape(s.substring(s.indexOf(":")+1,s.length()).trim()) + "</dc:date>";
+		
+		return emaildate;
+	}
+	public static String getEmailType(String s)
+	{
+		String emailtype="<email:Type rdf:resource=\"http://bipinupadhyaya.wordpress.com/ontologies/email#" + escape(s) + "\"/>";
+		
+		return emailtype;
+	}
+	
+	public static void writeTofile(String emailid,String emaildate,String emailTo,String emailfrom,String emailSubject, String emailbody,String ea) throws IOException
+	{
+		
+		
+	    FileWriter fstream = new FileWriter(OutputFileName,true);
+        BufferedWriter out = new BufferedWriter(fstream);
+		String s=emailid+ea+emaildate+emailfrom+emailTo+emailSubject+"<email:Body>"+emailbody+"</email:Body>" +"</email:Message>";
+		if(!header)
+		{
+		out.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+				+" <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"" +
+						" xmlns:rdfs=\"http://www.w3.org/2000/01/rdf-schema#\""  +
+						" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:email=\""+ 
+						namespace + "\">");
+		header=true;
+		}
+		out.write(s);
+		out.flush();
+		out.close();
+	}
+	
+	public static void endRDFFile() throws IOException
+	{
+		 	FileWriter fstream = new FileWriter(OutputFileName,true);
+	        BufferedWriter out = new BufferedWriter(fstream);
+			out.write("</rdf:RDF>");
+			out.flush();
+			out.close();
+	}
+	
+	public static String processAttachment(Vector<String> attachment)
+	{
+		boolean f=false;
+		String emailattachement="";
+		if(attachment.size()>0)
+			emailattachement=getEmailType("Attachment");
+		else
+			emailattachement=getEmailType("Regular");
+		
+		if(attachment.size()>0)
+			{
+			f=true;
+			emailattachement="<email:Attachment>";
+			}
+			while(attachment.size()>0)
+				emailattachement=emailattachement+ "<name>" + attachment.remove(0) + "</name>" ;
+			
+			if(f)
+				emailattachement=emailattachement+ "</email:Attachment>";
+			return emailattachement;
+			
+	}
+	
+	public static String escape(String s)
+	{
+		s=s.replace("&","&amp;");
+		s=s.replace("<","&lt;");
+		s=s.replace(">","&gt;");
+		s=s.replace("\"", "&quot;");
+		return s;
+	}
+	
+	public static void main(String[] args) throws Exception
+	{
+		InputFileName="/home/bipin/.mozilla-thunderbird/dqig5cjg.default/Mail/Local Folders/Inbox";
+		OutputFileName="/home/bipin/test.rdf";
+		FileReader fr = new FileReader(InputFileName);
+		int i=0;
+		BufferedReader br = new BufferedReader(fr);
+		String s;
+		String emailid,emaildate,emailTo,emailfrom,emailSubject,emailbody,emailattachement = "";
+		emailid="";
+		emaildate="";
+		emailTo="";
+		emailfrom="";
+		emailSubject="";
+		emailbody="";
+		emailattachement="";
+		while((s = br.readLine()) != null) {
+		    if(s.startsWith("Date:"))
+				emaildate=getDateInXML(s);
+			else if(s.startsWith("Message-id:"))
+				emailid=getMessageIDInXML(s);
+			else if(s.startsWith("Subject:"))
+				emailSubject=getSubjectInXML(s);
+			else if(s.startsWith("From:"))
+				emailfrom=getFromInXML(s);
+			else if(s.startsWith("To:"))
+				emailTo=getToFeildInXML(s.substring(3, s.length()));
+				
+			else if(s.startsWith("Original-recipient:"))
+				{	
+				String b=br.readLine();
+				emailbody = "";
+				Vector<String> attachment=new Vector<String>();
+				boolean flag=false;
+				while((b=br.readLine())!=null)
+				{
+			
+					if(b.startsWith("From"))
+				  	 if(br.readLine().startsWith("X-Account-Key"))
+			    		 if(br.readLine().startsWith("X-UIDL"))
+			    			 if(br.readLine().startsWith("X-Mozilla-Status"))
+			    				 {
+			    				 String ea=processAttachment(attachment);
+			    				// if(i>60)
+			    				 writeTofile(emailid,emaildate,emailTo,emailfrom,emailSubject,emailbody,ea);
+			    				 i++;
+			    				 break;
+			    				 
+			    				 }
+	    			if(b.startsWith("Content-Type: application"))
+					{
+						attachment.add(b.substring(b.indexOf("=")+2, b.length()-1));
+						flag=true;
+					}
+	    			else if(b.startsWith("Content-Type: image"))
+					{
+	    				attachment.add(b.substring(b.indexOf("=")+2, b.length()-1));
+						flag=true;
+					}
+	    			else if(!flag)
+	    				emailbody=emailbody+escape(b.trim());
+				}
+				}
+			
+		}
+		
+		endRDFFile();
+	}
+
+}
