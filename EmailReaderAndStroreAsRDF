@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 
 
 public class EmailReaderAndStroreAsRDF {
-	public static int i=0;
+	public static int 
 	public static boolean header=false;
 	public static String InputFileName="";
 	public static String OutputFileName="";
